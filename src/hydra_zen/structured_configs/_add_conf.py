@@ -1,32 +1,30 @@
-import dataclasses
 import functools
 import inspect
-import warnings
 from collections.abc import MutableMapping
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass
-from inspect import isclass, isfunction
+
+# from inspect import isclass, isfunction
 from pathlib import Path
-from pprint import pprint
-from pydoc import locate
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Type
+from typing import Optional  # Any,; Callable,; Dict,; List,; Mapping,; Tuple,; Type
 
 from hydra.core.config_store import ConfigStore
-from omegaconf import MISSING, OmegaConf
-from typing_extensions import Literal
+from omegaconf import OmegaConf  # MISSING,
 
-from hydra_zen import (
-    builds,
+from hydra_zen import (  # builds,; make_config,
     instantiate,
     load_from_yaml,
-    make_config,
     make_custom_builds_fn,
     save_as_yaml,
     to_yaml,
 )
-from hydra_zen.typing import SupportedPrimitive, ZenWrappers
-from hydra_zen.typing._implementations import DataClass_
+
+# from typing_extensions import Literal
+
+
+# from hydra_zen.typing import SupportedPrimitive, ZenWrappers
+# from hydra_zen.typing._implementations import DataClass_
 
 # commenting these out for now since builds_bases is deprecated starting from hydra-zen 0.8
 # unclear if we need the functionality we were using it for
@@ -475,6 +473,50 @@ class ZenExtras:
 
         try:
             new_instance.store()
-        except:
+        except Exception:
             pass
         return new_instance
+
+
+def delete_keys_from_dict(dictionary, keys):
+    for key in keys:
+        with suppress(KeyError):
+            del dictionary[key]
+    for value in dictionary.values():
+        if isinstance(value, MutableMapping):
+            delete_keys_from_dict(value, keys)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, MutableMapping):
+                    delete_keys_from_dict(item, keys)
+
+
+def delete_null_cs_keys(dictionary):
+
+    with suppress(KeyError):
+        if dictionary["group_"] is None:
+            del dictionary["group_"]
+        if dictionary["name_"] is None:
+            del dictionary["name_"]
+        if dictionary["defaults"] == ["_self_"]:
+            del dictionary["defaults"]
+    for value in dictionary.values():
+        if isinstance(value, MutableMapping):
+            delete_null_cs_keys(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, MutableMapping):
+                    delete_null_cs_keys(item)
+
+
+def delete_null_vals_from_dict(dictionary):
+
+    for key, val in list(dictionary.items()):
+        if val is None:
+            del dictionary[key]
+        if isinstance(val, MutableMapping):
+            delete_null_vals_from_dict(val)
+        elif isinstance(val, list):
+            for item in val:
+                if isinstance(item, MutableMapping):
+                    delete_null_vals_from_dict(item)
