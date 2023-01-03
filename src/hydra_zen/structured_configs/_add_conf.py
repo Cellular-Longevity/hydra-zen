@@ -302,3 +302,179 @@ def merge_zen_meta_defaults(name_, group_, package_, provider_, defaults):
     zen_meta["provider_"] = zen_meta.get("provider") or provider_
     zen_meta["defaults"] = zen_meta.get("defaults") if defaults is None else defaults
     return zen_meta
+
+
+global cs
+cs = ConfigStore.instance()
+
+
+@dataclass
+class ZenExtras:
+    """Mixin that adds convenience methods to hydra_zen dataclasses."""
+
+    def __post_init__(self):
+        if getattr(self, "name_", None) is not None:
+            self.store()
+
+    def to_yaml(self, *, resolve=False, sort_keys=False):
+        """It converts the data into a YAML format.
+
+        Args:
+            resolve: If True, resolve any references in the object. Defaults to False
+            sort_keys: If True, the output will be sorted by key. Defaults to False
+
+        Returns:
+            The return value is a string.
+        """
+        return to_yaml(self, resolve=resolve, sort_keys=sort_keys)
+
+    def save_as_yaml(self, f, resolve=False):
+        """It takes a file object and a boolean value as arguments, and then it saves the file as a
+        YAML file.
+
+        Args:
+            f: the file to save to.
+            resolve: If True, resolve the object to a dictionary before saving. Defaults to False
+        """
+        save_as_yaml(self, f, resolve=resolve)
+
+    def load_from_yaml(self, file_):
+        """`load_from_yaml` loads a yaml file into a python object.
+
+        Args:
+            file_: The file to load the parameters from.
+
+        Returns:
+            The load_from_yaml function is being returned.
+        """
+        return load_from_yaml(file_)
+
+    def to_omegaconf(self):
+        """It converts a PyTorch model to an OmegaConf object.
+
+        Returns:
+            OmegaConf.structured(self)
+        """
+        return OmegaConf.structured(self)
+
+    def to_dict(self):
+        """`OmegaConf.to_container(self.to_omegaconf())`
+
+        The `to_omegaconf()` function returns a dictionary of the class attributes. The `to_container()`
+        function converts the dictionary to a container
+
+        Returns:
+            A dictionary
+        """
+        return OmegaConf.to_container(self.to_omegaconf())
+
+    def instantiate(self):
+        """It returns the instantiate function.
+
+        Returns:
+            The instantiate method is being returned.
+        """
+        return instantiate(self)
+
+    def unpack(self):
+        """Alias for instantiate."""
+        return self.instantiate()
+
+    def store(self):
+        """Stores object in the config store.
+
+        Returns:
+            The object itself (for chaining)
+        """
+        global cs
+        cs.store(
+            name=self.name_,
+            node=self,
+            group=self.group_,
+            package=self.package_,
+            provider=self.provider_,
+        )
+        return self
+
+    def save(self, config_root, subdir=None, filename=None, resolve=False):
+        """`save` takes a `config_root` (a path to a directory), a `subdir` (a path to a
+        subdirectory), a `filename` (a path to a file), and a `resolve` (a boolean) and saves the
+        configuration as a yaml file in the `config_root` directory.
+
+        Args:
+            config_root: The root directory where the config file will be saved.
+            subdir: The subdirectory to save the config file in.
+            filename: The name of the file to save the configuration to.
+            resolve: If True, resolve the config to a dict and save that. Defaults to False
+        """
+        config_root = Path(config_root)
+        subdir = Path(subdir or self.group_)
+        subdir = config_root.joinpath(self.group_)
+        subdir.mkdir(parents=True, exist_ok=True)
+        filename = Path(filename or self.name_)
+        self.save_as_yaml(
+            subdir.joinpath(filename).with_suffix(".yaml"), resolve=resolve
+        )
+
+    def show(self, verbosity: str = "compact", exclude_keys=None, *args, **kwargs):
+        """It shows the object in a human readable format.
+
+        Returns:
+            The return value is a string.
+        """
+        exclude_keys = (
+            [
+                "package_",
+                "provider_",
+                "_zen_exclude",
+                "zen_partial",
+                "_target_",
+                "_recursive_",
+            ]
+            if exclude_keys is None
+            else exclude_keys
+        )
+
+        if verbosity == "all":
+            output = self.to_yaml(*args, **kwargs)
+        elif verbosity == "compact":
+            d = self.to_dict()
+            delete_keys_from_dict(d, exclude_keys)
+            delete_null_cs_keys(d)
+            delete_null_vals_from_dict(d)
+            output = to_yaml(OmegaConf.create(d), *args, **kwargs)
+        elif verbosity == "standard":
+            d = self.to_dict()
+            delete_keys_from_dict(d, exclude_keys)
+            output = to_yaml(OmegaConf.create(d), *args, **kwargs)
+        return print(output)
+
+    def __call__(self, **kwargs):
+        """`__call__` takes a dictionary of keyword arguments, merges them with the current
+        instance of the class, and returns a new instance of the class with the updated config.
+
+        Returns:
+            A new instance of the class, with the new values set.
+        """
+        # //TODO https://github.com/Cellular-Longevity/newtricks/issues/491 Fix support for hydra-zen types when using __call__ on instantiated conf
+        # current_instance_omegaconf = self.to_omegaconf()
+
+        # # current_instance_omegaconf.merge_with(newly_called_omegaconf)
+        # current_instance_omegaconf.merge_with(OmegaConf.create(dict(**kwargs)))
+
+        # # OmegaConf.to_object(current_instance_omegaconf)
+        # # it should be possible to do this ^ but it hits an error
+        # # https://github.com/mit-ll-responsible-ai/hydra-zen/issues/242
+        # # looks like it has maybe been patched in recent PR to omegaconf https://github.com/omry/omegaconf/pull/879
+
+        # return _to_object_workaround(current_instance_omegaconf)
+
+        new_instance = deepcopy(self)
+        for key, value in kwargs.items():
+            setattr(new_instance, key, value)
+
+        try:
+            new_instance.store()
+        except:
+            pass
+        return new_instance
