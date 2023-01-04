@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional  # Any,; Callable,; Dict,; List,; Mapping,; Tuple,; Type
 
-from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf  # MISSING,
 
 from hydra_zen import (  # builds,; make_config,
@@ -17,6 +16,7 @@ from hydra_zen import (  # builds,; make_config,
     load_from_yaml,
     make_custom_builds_fn,
     save_as_yaml,
+    store,
     to_yaml,
 )
 
@@ -31,46 +31,38 @@ def add_conf(*args, **kwargs):
     Dispatching for decorator. If the user passes in a single positional argument, then we assume it's a class and we call the
     _add_conf function. Otherwise, we call the _add_custom_conf function
 
-    Returns:
-      A function that takes in a class and returns a function that takes in a class and returns a
-    function that takes in a class and returns a function that takes in a class and returns a function
-    that takes in a class and returns a function that takes in a class and returns a function that takes
-    in a class and returns a function that takes in a class and returns a function that takes in a class
-    and
     """
-    if kwargs or len(args) != 1:
+    # if kwargs or len(pos_args) > 0:
+    #     return _add_custom_conf(*pos_args, **kwargs) # returns a function that goes on to wrap the class
+    # return _add_conf(cls) # returns a wrapped class
+    if (len(kwargs) == 0) and (len(args) == 1):
+        cls = args[0]
+        return _add_conf(cls, **kwargs)
+    else:
         return _add_custom_conf(**kwargs)
-    cls = args[0]
-    return _add_conf(cls, **kwargs)
 
 
 def _add_custom_conf(
-    name_: Optional[str] = None,
-    group_: Optional[str] = None,
-    package_: Optional[str] = "_group_",
-    provider_: Optional[str] = None,
-    defaults: Optional[list] = None,
+    *pos_args,
     **kwargs,
 ):
     """Returns add_conf decorator but with different default arguments to be applied to the class
     level conf.
 
     Args:
-        name_ (Optional[str], optional): _description_. Defaults to None.
-        group_ (Optional[str], optional): _description_. Defaults to None.
-        package_ (Optional[str], optional): _description_. Defaults to "_group_".
-        provider_ (Optional[str], optional): _description_. Defaults to None.
-        defaults (Optional[list], optional): _description_. Defaults to None.
+        *pos_args: positional arguments to be passed to the class level conf
+        **kwargs: keyword arguments to be passed to the class level conf
 
     Returns:
-        _type_: _description_
+
     """
-    zen_meta = merge_zen_meta_defaults(name_, group_, package_, provider_, defaults)
-    return functools.partial(_add_conf, zen_meta=zen_meta, **kwargs)
+    return functools.partial(_add_conf, *pos_args, **kwargs)
 
 
 def _add_conf(
     cls,
+    /,
+    *pos_args,
     **kwargs,
 ):
     """Decorator that adds an attribute called `conf` which holds the configuration object for that
@@ -124,14 +116,11 @@ def _add_conf(
         LogisticRegressionConfig = WrappedLogisticRegression.conf
     """
     wrapped_cls = deepcopy(cls)
-    # validate signature of wrapped class
-    check_class_signature_does_not_include_reserved_keywords(wrapped_cls)
-    check_signature_has_defaults_for_all_parameters(wrapped_cls)
-    conf = configures(wrapped_cls, **kwargs)  # creates conf dataclass for wrapped_cls
-    setattr(wrapped_cls, "Conf", conf)  # adds conf dataclass as Conf
+    _Conf = configures(wrapped_cls, **kwargs)  # creates conf dataclass for wrapped_cls
+    setattr(wrapped_cls, "Conf", _Conf)  # adds conf dataclass as Conf
     wrapped_cls = _override_constructor(wrapped_cls)
     # wrapped_cls = override_mro(wrapped_cls,mro=cls.__mor__) # let's leave this as a reminder
-    wrapped_cls = make_get_state_ignore_conf(wrapped_cls)
+    wrapped_cls = make_get_state_ignore_conf(wrapped_cls)  # so that pickling works
 
     return wrapped_cls
 
@@ -184,51 +173,6 @@ def _override_constructor(cls):
                 setattr(self, "conf", conf)
             super().__init__(*args, **kwargs)
 
-    return WrappedClass
-
-
-def _batteries_included_override_constructor(cls):
-    @functools.wraps(cls, updated=())
-    class WrappedClass(cls):
-        def __new__(
-            cls,
-            *args,
-            name_: Optional[str] = None,
-            group_: Optional[str] = None,
-            package_: Optional[str] = "_group_",
-            provider_: Optional[str] = None,
-            defaults: Optional[list] = None,
-            **kwargs,
-        ):
-            zen_meta = merge_zen_meta_defaults(
-                name_, group_, package_, provider_, defaults
-            )
-
-            global _configuring
-            if _configuring:
-                return cls.Conf(*args, **zen_meta, **kwargs)
-            else:
-                return super(WrappedClass, cls).__new__(cls)
-
-        def __init__(
-            self,
-            *args,
-            name_: Optional[str] = None,
-            group_: Optional[str] = None,
-            package_: Optional[str] = "_group_",
-            provider_: Optional[str] = None,
-            defaults: Optional[list] = None,
-            **kwargs,
-        ):
-            zen_meta = merge_zen_meta_defaults(
-                name_, group_, package_, provider_, defaults
-            )
-            if not hasattr(self, "conf"):
-                conf = self.Conf(*args, **zen_meta, **kwargs)
-                setattr(self, "conf", conf)
-            super().__init__(*args, **kwargs)
-
-    # functools.update_wrapper(WrappedClass,cls,updated=())
     return WrappedClass
 
 
@@ -356,12 +300,8 @@ def merge_zen_meta_defaults(name_, group_, package_, provider_, defaults):
     return zen_meta
 
 
-global cs
-cs = ConfigStore.instance()
-
-
 @dataclass
-class ZenExtras:
+class BatteriesIncludedConf:
     """Mixin that adds convenience methods to hydra_zen dataclasses."""
 
     def __post_init__(self):
@@ -402,7 +342,7 @@ class ZenExtras:
         return load_from_yaml(file_)
 
     def to_omegaconf(self):
-        """It converts a PyTorch model to an OmegaConf object.
+        """It converts a config dataclass to an OmegaConf object.
 
         Returns:
             OmegaConf.structured(self)
@@ -428,24 +368,20 @@ class ZenExtras:
         """
         return instantiate(self)
 
-    def unpack(self):
-        """Alias for instantiate."""
-        return self.instantiate()
-
     def store(self):
         """Stores object in the config store.
 
         Returns:
             The object itself (for chaining)
         """
-        global cs
-        cs.store(
+        store(
             name=self.name_,
             node=self,
             group=self.group_,
             package=self.package_,
             provider=self.provider_,
         )
+        # could maybe return the output of store here?
         return self
 
     def save(self, config_root, subdir=None, filename=None, resolve=False):
@@ -491,13 +427,13 @@ class ZenExtras:
             output = self.to_yaml(*args, **kwargs)
         elif verbosity == "compact":
             d = self.to_dict()
-            delete_keys_from_dict(d, exclude_keys)
-            delete_null_cs_keys(d)
-            delete_null_vals_from_dict(d)
+            _delete_keys_from_dict(d, exclude_keys)
+            _delete_null_cs_keys(d)
+            _delete_null_vals_from_dict(d)
             output = to_yaml(OmegaConf.create(d), *args, **kwargs)
         elif verbosity == "standard":
             d = self.to_dict()
-            delete_keys_from_dict(d, exclude_keys)
+            _delete_keys_from_dict(d, exclude_keys)
             output = to_yaml(OmegaConf.create(d), *args, **kwargs)
         return print(output)
 
@@ -508,18 +444,6 @@ class ZenExtras:
         Returns:
             A new instance of the class, with the new values set.
         """
-        # //TODO https://github.com/Cellular-Longevity/newtricks/issues/491 Fix support for hydra-zen types when using __call__ on instantiated conf
-        # current_instance_omegaconf = self.to_omegaconf()
-
-        # # current_instance_omegaconf.merge_with(newly_called_omegaconf)
-        # current_instance_omegaconf.merge_with(OmegaConf.create(dict(**kwargs)))
-
-        # # OmegaConf.to_object(current_instance_omegaconf)
-        # # it should be possible to do this ^ but it hits an error
-        # # https://github.com/mit-ll-responsible-ai/hydra-zen/issues/242
-        # # looks like it has maybe been patched in recent PR to omegaconf https://github.com/omry/omegaconf/pull/879
-
-        # return _to_object_workaround(current_instance_omegaconf)
 
         new_instance = deepcopy(self)
         for key, value in kwargs.items():
@@ -532,20 +456,20 @@ class ZenExtras:
         return new_instance
 
 
-def delete_keys_from_dict(dictionary, keys):
+def _delete_keys_from_dict(dictionary, keys):
     for key in keys:
         with suppress(KeyError):
             del dictionary[key]
     for value in dictionary.values():
         if isinstance(value, MutableMapping):
-            delete_keys_from_dict(value, keys)
+            _delete_keys_from_dict(value, keys)
         elif isinstance(value, list):
             for item in value:
                 if isinstance(item, MutableMapping):
-                    delete_keys_from_dict(item, keys)
+                    _delete_keys_from_dict(item, keys)
 
 
-def delete_null_cs_keys(dictionary):
+def _delete_null_cs_keys(dictionary):
 
     with suppress(KeyError):
         if dictionary["group_"] is None:
@@ -556,21 +480,184 @@ def delete_null_cs_keys(dictionary):
             del dictionary["defaults"]
     for value in dictionary.values():
         if isinstance(value, MutableMapping):
-            delete_null_cs_keys(value)
+            _delete_null_cs_keys(value)
         elif isinstance(value, list):
             for item in value:
                 if isinstance(item, MutableMapping):
-                    delete_null_cs_keys(item)
+                    _delete_null_cs_keys(item)
 
 
-def delete_null_vals_from_dict(dictionary):
+def _delete_null_vals_from_dict(dictionary):
 
     for key, val in list(dictionary.items()):
         if val is None:
             del dictionary[key]
         if isinstance(val, MutableMapping):
-            delete_null_vals_from_dict(val)
+            _delete_null_vals_from_dict(val)
         elif isinstance(val, list):
             for item in val:
                 if isinstance(item, MutableMapping):
-                    delete_null_vals_from_dict(item)
+                    _delete_null_vals_from_dict(item)
+
+
+batteries_included_configures = make_custom_builds_fn(
+    populate_full_signature=True,
+    zen_dataclass={"bases": (BatteriesIncludedConf,)},
+)
+
+
+def _batteries_included_override_constructor(cls):
+    @functools.wraps(cls, updated=())
+    class WrappedClass(cls):
+        def __new__(
+            cls,
+            *args,
+            name_: Optional[str] = None,
+            group_: Optional[str] = None,
+            package_: Optional[str] = "_group_",
+            provider_: Optional[str] = None,
+            defaults: Optional[list] = None,
+            **kwargs,
+        ):
+            zen_meta = merge_zen_meta_defaults(
+                name_, group_, package_, provider_, defaults
+            )
+
+            global _configuring
+            if _configuring:
+                return cls.Conf(*args, **zen_meta, **kwargs)
+            else:
+                return super(WrappedClass, cls).__new__(cls)
+
+        def __init__(
+            self,
+            *args,
+            name_: Optional[str] = None,
+            group_: Optional[str] = None,
+            package_: Optional[str] = "_group_",
+            provider_: Optional[str] = None,
+            defaults: Optional[list] = None,
+            **kwargs,
+        ):
+            zen_meta = merge_zen_meta_defaults(
+                name_, group_, package_, provider_, defaults
+            )
+            if not hasattr(self, "conf"):
+                conf = self.Conf(*args, **zen_meta, **kwargs)
+                setattr(self, "conf", conf)
+            super().__init__(*args, **kwargs)
+
+    # functools.update_wrapper(WrappedClass,cls,updated=())
+    return WrappedClass
+
+
+def add_batteries(*args, **kwargs):
+    """
+    Dispatching for decorator. If the user passes in a single positional argument, then we assume it's a class and we call the
+    _add_conf function. Otherwise, we call the _add_custom_conf function
+
+    Returns:
+      A function that takes in a class and returns a function that takes in a class and returns a
+    function that takes in a class and returns a function that takes in a class and returns a function
+    that takes in a class and returns a function that takes in a class and returns a function that takes
+    in a class and returns a function that takes in a class and returns a function that takes in a class
+    and
+    """
+    if kwargs or len(args) != 1:
+        return _add_custom_batteries(**kwargs)
+    cls = args[0]
+    return _add_batteries(cls, **kwargs)
+
+
+def _add_custom_batteries(
+    name_: Optional[str] = None,
+    group_: Optional[str] = None,
+    package_: Optional[str] = "_group_",
+    provider_: Optional[str] = None,
+    defaults: Optional[list] = None,
+    **kwargs,
+):
+    """Returns add_conf decorator but with different default arguments to be applied to the class
+    level conf.
+
+    Args:
+        name_ (Optional[str], optional): _description_. Defaults to None.
+        group_ (Optional[str], optional): _description_. Defaults to None.
+        package_ (Optional[str], optional): _description_. Defaults to "_group_".
+        provider_ (Optional[str], optional): _description_. Defaults to None.
+        defaults (Optional[list], optional): _description_. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+    zen_meta = merge_zen_meta_defaults(name_, group_, package_, provider_, defaults)
+    return functools.partial(_add_batteries, zen_meta=zen_meta, **kwargs)
+
+
+def _add_batteries(
+    cls,
+    **kwargs,
+):
+    """Decorator that adds an attribute called `conf` which holds the configuration object for that
+    class.
+
+    Args:
+        cls: the class that is being decorated
+
+    Returns:
+        The class itself.
+
+    Examples:
+
+        ### decorate a class definition ###
+        @add_conf
+        class MyClass:
+            def __init__(
+                self,
+                a:str='dog',
+                b:int=3,
+                ):
+                self.a = a
+                self.b = b
+
+            def __repr__(self):
+                return f'MyClass({self.a}, {self.b})'
+
+        # config class is now available as attribute on MyClass
+        MyClassConfig = MyClass.conf
+        MyClassConfig
+        >>> types.Builds_MyClass
+
+        # create instance of config class by calling .conf
+        my_class_config_instance = MyClass.conf(a='Lily', b=117)
+        my_class_config_instance
+        >>> Builds_MyClass(_target_='hydra_zen.funcs.zen_processing', _zen_target='__main__.MyClass', _zen_exclude=('name_', 'group_', 'package_', 'provider_', 'defaults'), a='Lily', b=117, name_=None, group_=None, package_='_group_', provider_=None, defaults=['_self_'])
+
+        # create instance of object via hydra instantiate
+        my_class_instance = MyClass.conf(a='Lily', b=117).instantiate()
+        my_class_instance
+        >>> MyClass('Lily', 117)
+
+        # fields of .conf track the arguments used to construct the parent object
+        my_class = MyClass(a='Lily', b=117)
+        my_class.conf
+        >>> Builds_MyClass(_target_='hydra_zen.funcs.zen_processing', _zen_target='__main__.MyClass', _zen_exclude=('name_', 'group_', 'package_', 'provider_', 'defaults'), a='Lily', b=117, name_=None, group_=None, package_='_group_', provider_=None, defaults=['_self_'])
+
+        ### decorate an imported class ###
+        from sklearn.linear_model import LogisticRegression
+        WrappedLogisticRegression = add_conf(LogisticRegression)
+        LogisticRegressionConfig = WrappedLogisticRegression.conf
+    """
+    wrapped_cls = deepcopy(cls)
+    # validate signature of wrapped class
+    check_class_signature_does_not_include_reserved_keywords(wrapped_cls)
+    check_signature_has_defaults_for_all_parameters(wrapped_cls)
+    conf = batteries_included_configures(
+        wrapped_cls, **kwargs
+    )  # creates conf dataclass for wrapped_cls
+    setattr(wrapped_cls, "Conf", conf)  # adds conf dataclass as Conf
+    wrapped_cls = _batteries_included_override_constructor(wrapped_cls)
+    # wrapped_cls = override_mro(wrapped_cls,mro=cls.__mor__) # let's leave this as a reminder
+    wrapped_cls = make_get_state_ignore_conf(wrapped_cls)
+
+    return wrapped_cls
