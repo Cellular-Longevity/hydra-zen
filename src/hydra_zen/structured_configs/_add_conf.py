@@ -22,19 +22,22 @@ from hydra_zen import (  # builds,; make_config,
 
 # from typing_extensions import Literal
 
-
 # from hydra_zen.typing import SupportedPrimitive, ZenWrappers
 # from hydra_zen.typing._implementations import DataClass_
 
-# commenting these out for now since builds_bases is deprecated starting from hydra-zen 0.8
-# unclear if we need the functionality we were using it for
-# zen_meta_defaults = get_zen_meta_defaults()
-# configures = make_custom_builds_fn(populate_full_signature=True, builds_bases=(ZenExtras,), zen_meta=zen_meta_defaults)
-
-configures = make_custom_builds_fn(populate_full_signature=True)
-
 
 def add_conf(*args, **kwargs):
+    """
+    Dispatching for decorator. If the user passes in a single positional argument, then we assume it's a class and we call the
+    _add_conf function. Otherwise, we call the _add_custom_conf function
+
+    Returns:
+      A function that takes in a class and returns a function that takes in a class and returns a
+    function that takes in a class and returns a function that takes in a class and returns a function
+    that takes in a class and returns a function that takes in a class and returns a function that takes
+    in a class and returns a function that takes in a class and returns a function that takes in a class
+    and
+    """
     if kwargs or len(args) != 1:
         return _add_custom_conf(**kwargs)
     cls = args[0]
@@ -126,14 +129,65 @@ def _add_conf(
     check_signature_has_defaults_for_all_parameters(wrapped_cls)
     conf = configures(wrapped_cls, **kwargs)  # creates conf dataclass for wrapped_cls
     setattr(wrapped_cls, "Conf", conf)  # adds conf dataclass as Conf
-    wrapped_cls = override_constructor(wrapped_cls)
+    wrapped_cls = _override_constructor(wrapped_cls)
     # wrapped_cls = override_mro(wrapped_cls,mro=cls.__mor__) # let's leave this as a reminder
     wrapped_cls = make_get_state_ignore_conf(wrapped_cls)
 
     return wrapped_cls
 
 
-def override_constructor(cls):
+@dataclass
+class Conf:
+    def __call__(self, **kwargs):
+        """`__call__` takes a dictionary of keyword arguments, merges them with the current
+        instance of the class, and returns a new instance of the class with the updated config.
+
+        Returns:
+            A new instance of the class, with the new values set.
+        """
+
+        new_instance = deepcopy(self)
+        for key, value in kwargs.items():
+            setattr(new_instance, key, value)
+
+        return new_instance
+
+
+configures = make_custom_builds_fn(
+    populate_full_signature=True,
+    zen_dataclass={"bases": (Conf,)},
+)
+
+
+def _override_constructor(cls):
+    @functools.wraps(cls, updated=())
+    class WrappedClass(cls):
+        def __new__(
+            cls,
+            *args,
+            **kwargs,
+        ):
+
+            global _configuring
+            if _configuring:
+                return cls.Conf(*args, **kwargs)
+            else:
+                return super(WrappedClass, cls).__new__(cls)
+
+        def __init__(
+            self,
+            *args,
+            **kwargs,
+        ):
+            if not hasattr(self, "conf"):
+                conf = self.Conf(*args, **kwargs)
+                setattr(self, "conf", conf)
+            super().__init__(*args, **kwargs)
+
+    return WrappedClass
+
+
+def _batteries_included_override_constructor(cls):
     @functools.wraps(cls, updated=())
     class WrappedClass(cls):
         def __new__(
