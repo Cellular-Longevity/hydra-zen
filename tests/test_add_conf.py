@@ -5,7 +5,7 @@ import pytest
 from hydra_zen import (  # builds,; load_from_yaml,; make_config,; make_custom_builds_fn,; save_as_yaml,; to_yaml,
     instantiate,
 )
-from hydra_zen.structured_configs._add_conf import add_batteries, add_conf
+from hydra_zen.structured_configs._add_conf import ConfMode, add_batteries, add_conf
 
 # from functools import partial
 # from inspect import isclass
@@ -108,3 +108,20 @@ def test_add_batteries_adds_conf_with_extra_methods(wrapped_class):
     assert hasattr(wrapped_class.Conf, "instantiate")
     assert hasattr(wrapped_class.Conf, "store")
     assert hasattr(wrapped_class.Conf, "to_yaml")
+
+
+@pytest.mark.parametrize(
+    "wrapped_class",
+    [
+        simple_wrapped_class,
+        SimpleDecoratedClass,
+        SimpleBatteriesDecoratedClass,
+    ],
+)
+def test_constructing_in_ConfMode_context_creates_config(wrapped_class):
+    # broken, need to figure out updating the zen meta fields
+    with ConfMode():
+        config = wrapped_class()
+
+    assert is_dataclass(config)
+    assert isinstance(config, wrapped_class.Conf)
