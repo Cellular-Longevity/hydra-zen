@@ -5,7 +5,7 @@ import pytest
 from hydra_zen import (  # builds,; load_from_yaml,; make_config,; make_custom_builds_fn,; save_as_yaml,; to_yaml,
     instantiate,
 )
-from hydra_zen.structured_configs._conf import add_conf
+from hydra_zen.structured_configs._add_conf import add_conf
 
 # from functools import partial
 # from inspect import isclass
