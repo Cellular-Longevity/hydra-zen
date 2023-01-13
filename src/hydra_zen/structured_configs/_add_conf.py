@@ -28,12 +28,56 @@ from hydra_zen import (
 from hydra_zen.typing import SupportedPrimitive, ZenWrappers
 from hydra_zen.typing._implementations import DataClass_
 
+def get_zen_meta_defaults(zen_meta=None):
+    """> It returns a dictionary of default values for the `zen_meta` dictionary.
+
+    Args:
+        zen_meta (dict): a dictionary of zen_meta parameters
+
+    Returns:
+        A dictionary with the keys: name_, group_, package_, provider_, defaults.
+    """
+    _zen_meta_defaults = dict(
+        name_=None,
+        group_=None,
+        package_="_group_",
+        provider_=None,
+        defaults=["_self_"],
+    )
+    if zen_meta is None:
+        return _zen_meta_defaults
+    else:
+        _zen_meta_defaults.update(zen_meta)
+        return _zen_meta_defaults
+
+
+def merge_zen_meta_defaults(name_, group_, package_, provider_, defaults):
+    """It merges the zen_meta dictionary with the defaults dictionary.
+
+    Args:
+        name_: The name of the resource.
+        group_: The group of the resource.
+        package_: The name of the package that the resource belongs to.
+        provider_: The name of the provider.
+        defaults: The default values for the parameters.
+
+    Returns:
+        The zen_meta dictionary is being returned.
+    """
+    zen_meta = get_zen_meta_defaults()
+    zen_meta["name_"] = zen_meta.get("name") or name_
+    zen_meta["group_"] = zen_meta.get("group") or group_
+    zen_meta["package_"] = zen_meta.get("package") or package_
+    zen_meta["provider_"] = zen_meta.get("provider") or provider_
+    zen_meta["defaults"] = zen_meta.get("defaults") if defaults is None else defaults
+    return zen_meta
+
 # commenting these out for now since builds_bases is deprecated starting from hydra-zen 0.8
 # unclear if we need the functionality we were using it for
-# zen_meta_defaults = get_zen_meta_defaults()
+zen_meta_defaults = get_zen_meta_defaults()
 # configures = make_custom_builds_fn(populate_full_signature=True, builds_bases=(ZenExtras,), zen_meta=zen_meta_defaults)
 
-configures = make_custom_builds_fn(populate_full_signature=True)
+#configures = make_custom_builds_fn(populate_full_signature=True)
 
 
 def add_conf(*args, **kwargs):
@@ -126,7 +170,8 @@ def _add_conf(
     # validate signature of wrapped class
     check_class_signature_does_not_include_reserved_keywords(wrapped_cls)
     check_signature_has_defaults_for_all_parameters(wrapped_cls)
-    conf = configures(wrapped_cls, **kwargs)  # creates conf dataclass for wrapped_cls
+    #conf = configures(wrapped_cls, **kwargs)  # creates conf dataclass for wrapped_cls
+    conf = builds(wrapped_cls, populate_full_signature=True, builds_bases=(ZenExtras,), zen_meta=zen_meta_defaults, **kwargs)
     setattr(wrapped_cls, "Conf", conf)  # adds conf dataclass as Conf
     wrapped_cls = override_constructor(wrapped_cls)
     # wrapped_cls = override_mro(wrapped_cls,mro=cls.__mor__) # let's leave this as a reminder
@@ -257,51 +302,6 @@ def check_signature_has_defaults_for_all_parameters(cls_or_func):
         ]:
             if param.default is not inspect._empty:
                 defaultless_params.append(k)
-
-
-def get_zen_meta_defaults(zen_meta=None):
-    """> It returns a dictionary of default values for the `zen_meta` dictionary.
-
-    Args:
-        zen_meta (dict): a dictionary of zen_meta parameters
-
-    Returns:
-        A dictionary with the keys: name_, group_, package_, provider_, defaults.
-    """
-    _zen_meta_defaults = dict(
-        name_=None,
-        group_=None,
-        package_="_group_",
-        provider_=None,
-        defaults=["_self_"],
-    )
-    if zen_meta is None:
-        return _zen_meta_defaults
-    else:
-        _zen_meta_defaults.update(zen_meta)
-        return _zen_meta_defaults
-
-
-def merge_zen_meta_defaults(name_, group_, package_, provider_, defaults):
-    """It merges the zen_meta dictionary with the defaults dictionary.
-
-    Args:
-        name_: The name of the resource.
-        group_: The group of the resource.
-        package_: The name of the package that the resource belongs to.
-        provider_: The name of the provider.
-        defaults: The default values for the parameters.
-
-    Returns:
-        The zen_meta dictionary is being returned.
-    """
-    zen_meta = get_zen_meta_defaults()
-    zen_meta["name_"] = zen_meta.get("name") or name_
-    zen_meta["group_"] = zen_meta.get("group") or group_
-    zen_meta["package_"] = zen_meta.get("package") or package_
-    zen_meta["provider_"] = zen_meta.get("provider") or provider_
-    zen_meta["defaults"] = zen_meta.get("defaults") if defaults is None else defaults
-    return zen_meta
 
 
 global cs
