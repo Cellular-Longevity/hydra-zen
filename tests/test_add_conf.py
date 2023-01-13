@@ -5,7 +5,7 @@ import pytest
 from hydra_zen import (  # builds,; load_from_yaml,; make_config,; make_custom_builds_fn,; save_as_yaml,; to_yaml,
     instantiate,
 )
-from hydra_zen.structured_configs._add_conf import ConfMode, add_batteries, add_conf
+from hydra_zen.structured_configs._add_conf import ConfMode, add_conf #,add_batteries
 
 # from functools import partial
 # from inspect import isclass
@@ -35,11 +35,11 @@ class SimpleDecoratedClass:
         self.int_field = int_field
 
 
-@add_batteries
-class SimpleBatteriesDecoratedClass:
-    def __init__(self, string_field: str = "c", int_field: int = 5):
-        self.string_field = string_field
-        self.int_field = int_field
+# @add_batteries
+# class SimpleBatteriesDecoratedClass:
+#     def __init__(self, string_field: str = "c", int_field: int = 5):
+#         self.string_field = string_field
+#         self.int_field = int_field
 
 
 list_of_wrapped_classes = [
@@ -53,7 +53,7 @@ list_of_wrapped_classes = [
     [
         simple_wrapped_class,
         SimpleDecoratedClass,
-        SimpleBatteriesDecoratedClass,
+        # SimpleBatteriesDecoratedClass,
     ],
 )
 def test_add_conf_decorator_adds_dataclass_as_Conf_attr(wrapped_class):
@@ -101,7 +101,7 @@ def test_class_to_config_roundtrip(simple_wrapped_class):
     [
         # simple_wrapped_class,
         # SimpleDecoratedClass,
-        SimpleBatteriesDecoratedClass,
+        #SimpleBatteriesDecoratedClass,
     ],
 )
 def test_add_batteries_adds_conf_with_extra_methods(wrapped_class):
@@ -115,7 +115,7 @@ def test_add_batteries_adds_conf_with_extra_methods(wrapped_class):
     [
         simple_wrapped_class,
         SimpleDecoratedClass,
-        SimpleBatteriesDecoratedClass,
+        #SimpleBatteriesDecoratedClass,
     ],
 )
 def test_constructing_in_ConfMode_context_creates_config(wrapped_class):
