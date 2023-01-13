@@ -171,7 +171,10 @@ def _add_conf(
     check_class_signature_does_not_include_reserved_keywords(wrapped_cls)
     check_signature_has_defaults_for_all_parameters(wrapped_cls)
     #conf = configures(wrapped_cls, **kwargs)  # creates conf dataclass for wrapped_cls
-    conf = builds(wrapped_cls, populate_full_signature=True, builds_bases=(ZenExtras,), zen_meta=zen_meta_defaults, **kwargs)
+    if 'zen_meta' in kwargs:
+        conf = builds(wrapped_cls, populate_full_signature=True, builds_bases=(ZenExtras,), **kwargs)
+    else:
+        conf = builds(wrapped_cls, populate_full_signature=True, builds_bases=(ZenExtras,), zen_meta=zen_meta_defaults, **kwargs)
     setattr(wrapped_cls, "Conf", conf)  # adds conf dataclass as Conf
     wrapped_cls = override_constructor(wrapped_cls)
     # wrapped_cls = override_mro(wrapped_cls,mro=cls.__mor__) # let's leave this as a reminder
