@@ -377,21 +377,15 @@ class BatteriesIncludedConf:
         """
         return instantiate(self)
 
-    def store(self):
-        """Stores object in the config store.
-
-        Returns:
-            The object itself (for chaining)
-        """
+    def store(self, add_to_hydra_store: bool = True):
+        """Stores object in ZenStore."""
         store(
+            self,
             name=self.name_,
-            node=self,
             group=self.group_,
-            package=self.package_,
-            provider=self.provider_,
         )
-        # could maybe return the output of store here?
-        return self
+        if add_to_hydra_store:
+            store.add_to_hydra_store()
 
     def save(self, config_root, subdir=None, filename=None, resolve=False):
         """`save` takes a `config_root` (a path to a directory), a `subdir` (a path to a
